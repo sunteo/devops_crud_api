@@ -1,0 +1,6 @@
+Flask==3.0.3
+prometheus-flask-exporter==0.23.0
+pytest==8.3.2
+requests==2.32.3
+pymysql[rsa]==1.1.1
+cryptography==43.0.1
