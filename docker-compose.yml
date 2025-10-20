@@ -35,7 +35,7 @@ services:
       - --storage.tsdb.retention.time=7d
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "${PROM_PORT:-9090}:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus

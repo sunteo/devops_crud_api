@@ -57,6 +57,16 @@ jobs:
           echo "COMPOSE_PROJECT_NAME=devops_pet_sandbox" >> $GITHUB_ENV
           echo "PORT=18080" >> $GITHUB_ENV 
 
+      - name: Down old sandbox
+        run: docker compose -p devops_pet_sandbox -f docker-compose.yml down -v || true
+
+      - name: Set sandbox vars
+        run: |
+          echo "COMPOSE_PROJECT_NAME=devops_pet_sandbox" >> $GITHUB_ENV
+          echo "PORT=18080"        >> $GITHUB_ENV
+          echo "PROM_PORT=19090"   >> $GITHUB_ENV 
+          echo "TAG=pr-${GITHUB_SHA}" >> $GITHUB_ENV
+
       - name: Pull & Up (sandbox stack)
         env:
           TAG: ${{ env.TAG }}
