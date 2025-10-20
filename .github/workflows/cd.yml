@@ -1,0 +1,77 @@
+name: CD (GHCR)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build_and_push:
+    name: Build & Push to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase repo path
+        id: repo
+        run: echo "full=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USER }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build image
+        env:
+          IMAGE: ghcr.io/${{ steps.repo.outputs.full }}
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE:$TAG" .
+          docker tag "$IMAGE:$TAG" "$IMAGE:latest"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "TAG=$TAG"     >> $GITHUB_ENV
+
+      - name: Push image
+        run: |
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+
+  deploy_pull:
+    name: Deploy on self-hosted (pull & up)
+    runs-on: [self-hosted, linux, x64]
+    needs: build_and_push
+    steps:
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+            -u "${{ secrets.GHCR_USER }}" --password-stdin
+
+      - name: Set deploy TAG
+        run: echo "TAG=latest" >> $GITHUB_ENV
+
+      - name: Pull & Up
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          # compose в корне, использует image: ghcr.io/sunteo/devops_crud_api:${TAG}
+          docker compose pull
+          docker compose up -d
+          docker compose ps
+
+      - name: Health checks
+        run: |
+          for i in {1..30}; do
+            curl -fsS --max-time 3 http://127.0.0.1:8080/healthz && break
+            sleep 1; [ $i -eq 30 ] && exit 1
+          done
+          for i in {1..30}; do
+            RESP="$(curl -fsS --max-time 3 http://127.0.0.1:8080/dbcheck || true)"
+            echo "$RESP" | grep -q '"db":"ok"' && break
+            sleep 1; [ $i -eq 30 ] && exit 1
+          done
+
