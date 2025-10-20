@@ -3,7 +3,6 @@ version: "3.9"
 services:
   app:
     image: ghcr.io/sunteo/devops_crud_api:${TAG:-latest}
-    container_name: devops_pet_app
     depends_on:
       db:
         condition: service_healthy
@@ -13,12 +12,11 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
     expose:
-      - "5000"             # открыт внутри docker-сети
+      - "5000" 
     restart: unless-stopped
 
   nginx:
     image: nginx:stable-alpine
-    container_name: devops_pet_nginx
     depends_on:
       - app
     ports:
@@ -29,7 +27,6 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: devops_pet_prometheus
     depends_on:
       - nginx
     command:
@@ -46,7 +43,6 @@ services:
 
   db:
     image: mysql:8.0
-    container_name: devops_pet_db
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DB}
