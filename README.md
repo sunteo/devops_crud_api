@@ -5,9 +5,9 @@ Flask-приложение разворачивается через Docker Comp
 
 ## О проекте
 Простое REST-API для списка задач (CRUD) с health-check, метриками Prometheus и базой данных.
-В проект встроен bash-скрипт `run.sh`, который автоматически поднимает весь стек и проводит smoke-тест (проверку всех CRUD-операций).
+В проект встроен bash-скрипт `run.sh`, который автоматически поднимает весь стек и проводит smoke-тест (проверку всех CRUD-операций). Проект сопровождается CI/CD: GitHub Actions гоняет тесты на PR, а после merge в main автоматически деплоит обновление (образ в GHCR, self-hosted runner обновляет стек).
 
-**Стек:** Python (Flask), MySQL, Nginx, Docker, Docker Compose, Prometheus.
+**Стек:** Python (Flask), MySQL, Nginx, Docker, Docker Compose, Prometheus, GitHub Actions (CI/CD), GHCR.
 
 ## Эндпоинты
 - `GET /healthz` - проверка состояния приложения
@@ -20,25 +20,47 @@ Flask-приложение разворачивается через Docker Comp
 
 ## Как запустить
 ```bash
-git clone https://github.com/<username>/devops_crud_api.git
+git clone https://github.com/sunteo/devops_crud_api.git
 cd devops_crud_api
 ./run.sh
 ```
-По умолчанию API поднимается на порту 8080. Если этот порт уже занят - можно указать другой при запуске:
+По умолчанию API поднимается на порту 8080, а Prometheus — на 9090. Если эти порты заняты, можно указать другие при запуске:
 ```bash
-PORT=1111 ./run.sh
+PORT=8081 PROM_PORT=9091 ./run.sh
 ```
+
 **Скрипт сам:**
 - соберёт и поднимет контейнеры,
-- дождётся готовности /healthz,
+- дождётся готовности `/healthz` и успешного `/dbcheck`,
+- если `.env` нет — создаст из `.env.sample` автоматически;
 - выполнит тесты CRUD (create-read-update-delete),
 - выведет результат в консоль.
 
-**После запуска**
+## После запуска
 API: `http://127.0.0.1:<PORT>` (по умолчанию - 8080)
-При обращении к корневому эндпоинту / сервис возвращает статус работы в JSON-виде.
 
-Prometheus UI: `http://127.0.0.1:9090`
+Prometheus UI: `http://127.0.0.1:<PROM_PORT>` (по умолчанию - 9090)
+
+**Примеры запросов:**
+
+Проверка состояния приложения и доступность БД
+```bash
+curl -fsS http://127.0.0.1:$PORT/healthz
+curl -fsS http://127.0.0.1:$PORT/dbcheck
+```
+
+CRUD
+```bash
+curl -fsS -X POST -H "Content-Type: application/json" \
+  -d '{"title":"demo"}' http://127.0.0.1:$PORT/tasks
+
+curl -fsS http://127.0.0.1:$PORT/tasks
+
+curl -fsS -X PUT -H "Content-Type: application/json" \
+  -d '{"done": true}' http://127.0.0.1:$PORT/tasks/1
+
+curl -fsS -X DELETE http://127.0.0.1:$PORT/tasks/1
+```
 
 ## Остановка
 ```bash
