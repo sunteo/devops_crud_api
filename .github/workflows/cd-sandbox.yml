@@ -1,13 +1,13 @@
-name: CD (GHCR)
+name: CD Sandbox (GHCR)
 
 on:
-  push:
+  workflow_dispatch: {}      
+  pull_request:              
     branches: [ main ]
-  workflow_dispatch: {}
 
 jobs:
-  build_and_push:
-    name: Build & Push to GHCR
+  build_pr:
+    name: Build & Push PR image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,59 +26,67 @@ jobs:
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build image
+      - name: Build PR image (tag pr-<sha>)
         env:
           IMAGE: ghcr.io/${{ steps.repo.outputs.full }}
-          TAG: ${{ github.sha }}
+          SHA:   ${{ github.sha }}
         run: |
-          docker build -t "$IMAGE:$TAG" .
-          docker tag "$IMAGE:$TAG" "$IMAGE:latest"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-          echo "TAG=$TAG"     >> $GITHUB_ENV
+          docker build -t "$IMAGE:pr-$SHA" .
+          docker push  "$IMAGE:pr-$SHA"
 
-      - name: Push image
-        run: |
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
-
-  deploy_pull:
-    name: Deploy on self-hosted (pull & up)
+  deploy_pr:
+    name: Deploy PR to local sandbox
     runs-on: [self-hosted, linux, x64]
-    needs: build_and_push
-    if: github.ref == 'refs/heads/main'
+    needs: build_pr
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Prepare .env
+      - name: Prepare .env (optional)
         run: |
           [ -f .env ] || { [ -f .env.sample ] && cp .env.sample .env || true; }
-
 
       - name: Login to GHCR
         run: |
           echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
             -u "${{ secrets.GHCR_USER }}" --password-stdin
 
-      - name: Set deploy TAG
-        run: echo "TAG=latest" >> $GITHUB_ENV
+      - name: Set sandbox vars
+        run: |
+          echo "TAG=pr-${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "COMPOSE_PROJECT_NAME=devops_pet_sandbox" >> $GITHUB_ENV
+          echo "PORT=18080" >> $GITHUB_ENV 
 
-      - name: Pull & Up
+      - name: Down old sandbox
+        run: docker compose -p devops_pet_sandbox -f docker-compose.yml down -v || true
+
+      - name: Set sandbox vars
+        run: |
+          echo "COMPOSE_PROJECT_NAME=devops_pet_sandbox" >> $GITHUB_ENV
+          echo "PORT=18080"        >> $GITHUB_ENV
+          echo "PROM_PORT=19090"   >> $GITHUB_ENV 
+          echo "TAG=pr-${GITHUB_SHA}" >> $GITHUB_ENV
+
+      - name: Pull & Up (sandbox stack)
         env:
           TAG: ${{ env.TAG }}
+          COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
+          PORT: ${{ env.PORT }}
         run: |
           docker compose -f docker-compose.yml pull
           docker compose -f docker-compose.yml up -d
           docker compose -f docker-compose.yml ps
 
-      - name: Health checks
+      - name: Health checks (sandbox)
+        env:
+          PORT: ${{ env.PORT }}
         run: |
           for i in {1..30}; do
-            curl -fsS --max-time 3 http://127.0.0.1:8080/healthz && break
+            curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/healthz" && break
             sleep 1; [ $i -eq 30 ] && exit 1
           done
           for i in {1..30}; do
-            RESP="$(curl -fsS --max-time 3 http://127.0.0.1:8080/dbcheck || true)"
+            RESP="$(curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/dbcheck" || true)"
             echo "$RESP" | grep -q '"db":"ok"' && break
             sleep 1; [ $i -eq 30 ] && exit 1
           done

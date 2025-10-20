@@ -13,7 +13,7 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
     expose:
-      - "5000"             # открыт внутри docker-сети
+      - "5000"
     restart: unless-stopped
 
   nginx:
